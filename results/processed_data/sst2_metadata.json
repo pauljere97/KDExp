@@ -1,0 +1,13 @@
+{
+  "task": "sst2",
+  "train_size": 2000,
+  "val_size": 500,
+  "max_length": 256,
+  "tokenizer": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "fast_mode": true,
+  "seed": 42,
+  "label_tokens": {
+    "positive": 29871,
+    "negative": 29871
+  }
+}
