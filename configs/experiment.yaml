@@ -1,0 +1,360 @@
+# =============================================================================
+# Knowledge Distillation Thesis Experiments - Configuration
+# =============================================================================
+# This file contains all experiment hyperparameters and settings.
+# Corresponds to Chapter 3 experimental design.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Experiment Mode
+# -----------------------------------------------------------------------------
+experiment:
+  name: "kd_thesis_experiments"
+  version: "1.0.0"
+  fast_mode: true  # Override with FAST_MODE env var
+  
+# -----------------------------------------------------------------------------
+# Device Configuration (Section 3.4 - Experimental Setup)
+# -----------------------------------------------------------------------------
+device:
+  # Priority order for device selection
+  preference: ["mps", "cpu"]  # No CUDA on Apple Silicon
+  # Precision settings
+  precision:
+    mps: "fp32"    # MPS may have issues with fp16/bf16
+    cpu: "fp32"
+    cuda: "fp16"   # If ever used on CUDA hardware
+  # Memory management
+  memory:
+    max_memory_gb: 32  # Conservative limit for Apple Silicon
+    gradient_checkpointing: true
+    empty_cache_steps: 10  # Clear cache every N steps
+
+# -----------------------------------------------------------------------------
+# Model Configuration (Section 3.5 - Model Architecture)
+# -----------------------------------------------------------------------------
+models:
+  teacher:
+    # Primary teacher (7B-8B target for thesis)
+    primary: "meta-llama/Llama-3.2-8B-Instruct"
+    # Fallback for local MPS runs (3B-4B)
+    local_fallback: "Qwen/Qwen2.5-3B-Instruct"
+    # Auto-fallback on OOM
+    auto_fallback: true
+    # Use 4-bit loading for teacher if needed
+    load_in_4bit: false
+    
+  students:
+    s1:
+      name: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      params_b: 1.1
+      description: "Student S1: 1.1B parameter model"
+    s2:
+      # Set to "quantized-proxy" to use S1 with 4-bit quantization
+      name: "quantized-proxy"
+      base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      params_b: 0.35  # Effective size after quantization
+      description: "Student S2: Quantized proxy (~350M effective)"
+
+# -----------------------------------------------------------------------------
+# LoRA/PEFT Configuration (Section 3.5.1 - Parameter Efficient Fine-tuning)
+# -----------------------------------------------------------------------------
+peft:
+  enabled: true
+  lora:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+    bias: "none"
+    task_type: "CAUSAL_LM"
+
+# -----------------------------------------------------------------------------
+# Task Configuration (Section 3.6 - Tasks and Datasets)
+# -----------------------------------------------------------------------------
+tasks:
+  sst2:
+    enabled: true
+    dataset: "glue"
+    subset: "sst2"
+    metrics: ["accuracy", "f1"]
+    primary_metric: "accuracy"
+    # Sequence lengths
+    max_length:
+      fast: 256
+      full: 512
+    # Dataset sizes
+    subset_sizes:
+      fast:
+        train: 2000
+        validation: 500
+      full:
+        train: null  # Use full dataset
+        validation: null
+    # Task-specific settings
+    num_labels: 2
+    label_names: ["negative", "positive"]
+    
+  squad:
+    enabled: true
+    dataset: "squad"
+    subset: null
+    metrics: ["exact_match", "f1"]
+    primary_metric: "f1"
+    # Use validation as test (SQuAD test is hidden)
+    use_validation_as_test: true
+    # Sequence lengths
+    max_length:
+      fast: 512
+      full: 1024
+    # Dataset sizes
+    subset_sizes:
+      fast:
+        train: 2000
+        validation: 500
+      full:
+        train: null
+        validation: null
+    # QA-specific settings
+    doc_stride: 128
+    max_answer_length: 30
+
+# -----------------------------------------------------------------------------
+# Knowledge Distillation Methods (Section 3.7)
+# -----------------------------------------------------------------------------
+kd_methods:
+  # B0: Baseline (no KD, standard fine-tuning)
+  baseline:
+    enabled: true
+    name: "B0_baseline"
+    description: "Standard fine-tuning without knowledge distillation"
+    
+  # KD1: Logit-based KD (Section 3.7.1)
+  kd1_logit:
+    enabled: true
+    name: "KD1_logit"
+    description: "Soft-label distillation with temperature scaling"
+    # Loss: alpha * CE(y, p_s) + (1-alpha) * KL(softmax(z_t/T), softmax(z_s/T))
+    hyperparameters:
+      temperature:
+        values: [1, 2, 4, 8]
+        default: 4
+      alpha:
+        values: [0.1, 0.3, 0.5, 0.7]
+        default: 0.5
+    # Grid search (all combinations)
+    grid_search: true
+    
+  # KD2: Sequence-level KD (Section 3.7.2)
+  kd2_sequence:
+    enabled: true
+    name: "KD2_sequence"
+    description: "Teacher-generated target sequences"
+    # Primary for QA, optional for classification
+    tasks:
+      squad: true
+      sst2: false  # Off by default for SST-2
+    hyperparameters:
+      generation:
+        max_new_tokens: 50
+        temperature: 0.7
+        do_sample: false  # Greedy for reproducibility
+        
+  # KD3: Feature-based KD (Section 3.7.3)
+  kd3_feature:
+    enabled: true
+    name: "KD3_feature"
+    description: "Intermediate hidden state matching"
+    hyperparameters:
+      lambda_feature:
+        values: [0.1, 0.5, 1.0]
+        default: 0.5
+    # Layer mapping (teacher -> student)
+    layer_mapping:
+      # Default: proportional mapping
+      mode: "proportional"  # or "fixed"
+      # Fixed mapping example (for 12-layer teacher -> 6-layer student)
+      fixed:
+        teacher_layers: [4, 8, 12]
+        student_layers: [2, 4, 6]
+    # Memory optimization for MPS
+    memory_optimization:
+      # Store only selected layers
+      store_selected_only: true
+      # Use float16 for storage
+      storage_dtype: "float16"
+      # Sample subset in fast mode
+      sample_for_fast_mode: true
+      fast_mode_samples: 1000
+      # On-the-fly computation (no caching) - use if memory constrained
+      compute_on_the_fly: false
+
+# -----------------------------------------------------------------------------
+# Training Configuration (Section 3.8)
+# -----------------------------------------------------------------------------
+training:
+  # Optimizer
+  optimizer:
+    name: "adamw"
+    learning_rate: 2.0e-5
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    
+  # Learning rate schedule
+  scheduler:
+    name: "cosine"
+    warmup_ratio: 0.1
+    
+  # Batch configuration
+  batch:
+    # Per-device batch size (small for MPS memory)
+    per_device_train:
+      fast: 2
+      full: 4
+    per_device_eval:
+      fast: 4
+      full: 8
+    # Gradient accumulation to achieve effective batch size
+    gradient_accumulation_steps:
+      fast: 4   # Effective: 2*4=8
+      full: 4   # Effective: 4*4=16
+      
+  # Epochs
+  epochs:
+    fast: 1
+    full: 3
+    
+  # Evaluation
+  evaluation:
+    strategy: "steps"
+    eval_steps:
+      fast: 100
+      full: 500
+    save_strategy: "best"
+    metric_for_best_model: "eval_loss"
+    load_best_model_at_end: true
+    
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 3
+    threshold: 0.001
+    
+  # Reproducibility
+  seeds:
+    fast: [42]
+    full: [42, 123, 456]
+
+# -----------------------------------------------------------------------------
+# Efficiency Benchmarking (Section 3.9)
+# -----------------------------------------------------------------------------
+benchmarking:
+  # Latency measurement
+  latency:
+    warmup_runs: 3
+    measurement_runs: 10
+    batch_size: 1  # Always batch=1 for latency
+    
+  # Throughput measurement
+  throughput:
+    batch_sizes: [1, 4, 8]
+    num_samples: 100
+    
+  # Memory measurement
+  memory:
+    measure_peak: true
+    # Use psutil for RAM, torch.mps for MPS memory
+    
+  # CPU-only benchmarking
+  cpu_benchmark:
+    enabled: true
+    # Constrained simulation
+    constrained:
+      enabled: true
+      max_threads: 4
+
+# -----------------------------------------------------------------------------
+# Quantization (Section 3.9.1)
+# -----------------------------------------------------------------------------
+quantization:
+  enabled: true
+  # Apply only to best student configs
+  apply_to_top_k: 2
+  methods:
+    - name: "int8"
+      bits: 8
+      # Use torch.quantization for CPU (bitsandbytes not available on Mac)
+      backend: "torch"
+    - name: "int4"
+      bits: 4
+      # May need CPU-only evaluation on Mac
+      backend: "torch"
+      cpu_only: true
+  # Graceful fallback if quantization fails
+  fallback_on_error: true
+
+# -----------------------------------------------------------------------------
+# Output Configuration (Section 3.10)
+# -----------------------------------------------------------------------------
+output:
+  # Directory structure
+  dirs:
+    results: "./results"
+    raw_runs: "./results/raw_runs"
+    summary: "./results/summary"
+    figures: "./results/figures"
+    models: "./results/models"
+    
+  # Result tables
+  tables:
+    main_results_sst2: "main_results_sst2.csv"
+    main_results_squad: "main_results_squad.csv"
+    ablation_table: "ablation_table.csv"
+    significance_table: "significance_table.csv"
+    
+  # Figures
+  figures:
+    performance_vs_size: "performance_vs_model_size.png"
+    latency_vs_size: "latency_vs_model_size.png"
+    throughput_comparison: "throughput_comparison.png"
+    memory_usage: "memory_usage.png"
+    pareto_quality_latency: "pareto_quality_vs_latency.png"
+    kd_gain_vs_size: "kd_gain_vs_student_size.png"
+    
+  # Figure settings
+  figure_settings:
+    dpi: 300
+    format: "png"
+    style: "seaborn-v0_8-whitegrid"
+    figsize:
+      single: [8, 6]
+      double: [12, 5]
+      
+# -----------------------------------------------------------------------------
+# Logging and Tracking
+# -----------------------------------------------------------------------------
+logging:
+  level: "INFO"
+  console: true
+  file: true
+  log_file: "./results/experiment.log"
+  
+# -----------------------------------------------------------------------------
+# Caching Configuration
+# -----------------------------------------------------------------------------
+caching:
+  # Teacher output caching
+  teacher_cache:
+    enabled: true
+    cache_dir: "./results/teacher_cache"
+    # What to cache
+    cache_logits: true      # For KD1
+    cache_answers: true     # For KD2 (QA)
+    cache_hiddens: true     # For KD3
+    # Hidden state caching options
+    hiddens:
+      selected_layers_only: true
+      dtype: "float16"
+      # Chunk size for saving (to avoid memory issues)
+      chunk_size: 500
