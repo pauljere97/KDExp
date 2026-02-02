@@ -1,0 +1,32 @@
+
+================================================================================
+THESIS NARRATIVE (Copy-paste ready)
+================================================================================
+
+## Results Section Text:
+
+We evaluated two training approaches on a TinyLlama-1.1B student model:
+baseline fine-tuning (B0) and sequence-level knowledge distillation (KD2)
+using a Qwen-2.5-3B teacher.
+
+**Main Finding:** Contrary to expectations, the baseline approach (B0) achieved
+lower evaluation loss (0.5223 ± 0.0015) compared to
+KD2 (0.5424 ± 0.0013) on the SQuAD question-answering
+task. This represents a 3.9% increase
+in loss for the distillation method.
+
+Statistical analysis revealed a significant difference
+between methods (t = -17.999, p = 0.0001, Cohen's d = -14.696, large effect).
+
+**Interpretation:** These results suggest that sequence-level knowledge
+distillation may not universally outperform direct fine-tuning, particularly
+when (1) the student model has sufficient capacity to learn from gold labels,
+(2) the teacher-generated pseudo-labels introduce distribution shift, or
+(3) the task does not require complex reasoning beyond pattern matching.
+
+**Task Comparison:** SST-2 sentiment classification achieved substantially
+lower loss (0.3151) compared to SQuAD (0.5223),
+reflecting the relative complexity of question-answering versus binary
+classification (t = -245.954, p = 0.0000, large effect size).
+
+================================================================================
