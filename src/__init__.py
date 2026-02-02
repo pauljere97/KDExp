@@ -15,7 +15,7 @@ Modules:
 - bench: Benchmarking utilities
 - plots: Figure generation
 - stats: Statistical analysis
-- io: I/O utilities
+- run_io: I/O utilities and run registry
 """
 
 from .config import ExperimentConfig, load_config, get_config
