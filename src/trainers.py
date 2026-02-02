@@ -26,7 +26,7 @@ from transformers import (
 from transformers.trainer_utils import EvalLoopOutput
 from tqdm import tqdm
 
-from .kd_losses import SoftTargetLoss, SequenceKDLoss, FeatureMatchingLoss, CombinedKDLoss
+from kd_losses import SoftTargetLoss, SequenceKDLoss, FeatureMatchingLoss, CombinedKDLoss
 
 logger = logging.getLogger(__name__)
 
@@ -381,10 +381,10 @@ class BaselineTrainer(Trainer):
         self,
         model: nn.Module,
         inputs: Dict[str, torch.Tensor],
-        **kwargs
+        num_items_in_batch: Optional[int] = None,
     ) -> torch.Tensor:
         """Training step with cache clearing."""
-        loss = super().training_step(model, inputs, **kwargs)
+        loss = super().training_step(model, inputs, num_items_in_batch)
         
         self._step_count += 1
         if self._step_count % self.clear_cache_steps == 0:

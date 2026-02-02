@@ -204,11 +204,11 @@ Generated in `results/figures/`:
 If you use this code in your research, please cite:
 
 ```bibtex
-@mastersthesis{yourname2026kd,
+@mastersthesis{pauljere2026kd,
   title={Knowledge Distillation for Efficient Large Language Models},
-  author={Your Name},
+  author={Paul Jere},
   year={2026},
-  school={Your University}
+  school={WSB University}
 }
 ```
 
