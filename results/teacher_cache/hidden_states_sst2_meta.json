@@ -1,0 +1,19 @@
+{
+  "task": "sst2",
+  "num_chunks": 21,
+  "selected_layers": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32
+  ],
+  "total_layers": 36,
+  "hidden_size": 2048,
+  "pooling": "mean",
+  "dtype": "float16"
+}
