@@ -1,0 +1,3 @@
+method,task,loss_mean,loss_std,latency_32,latency_128,memory_mb
+B0,sst2,,,593.44,2523.24,4196.35
+KD2,squad,,,605.86,2409.79,4196.35
